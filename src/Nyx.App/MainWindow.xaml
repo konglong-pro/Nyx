@@ -1,0 +1,360 @@
+<Window x:Class="Nyx.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Nyx — File Shredder"
+        Icon="{StaticResource NyxMark}"
+        Width="980"
+        Height="720"
+        MinWidth="760"
+        MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        AllowDrop="True"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop"
+        Closing="Window_Closing">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+            <Setter Property="MinWidth" Value="96" />
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Image Width="44"
+                   Height="44"
+                   Margin="0,0,12,0"
+                   Source="{StaticResource NyxMark}"
+                   AutomationProperties.Name="Nyx logo" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock FontSize="22" FontWeight="SemiBold" Text="Nyx" />
+                <TextBlock Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                           Text="Best-effort local file shredding" />
+            </StackPanel>
+            <TextBlock x:Name="StateText"
+                       Grid.Column="2"
+                       VerticalAlignment="Center"
+                       FontWeight="SemiBold"
+                       AutomationProperties.LiveSetting="Polite"
+                       Text="Ready" />
+        </Grid>
+
+        <Border x:Name="NoticeBorder"
+                Grid.Row="1"
+                Margin="0,0,0,12"
+                Padding="10"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                BorderThickness="1"
+                Visibility="Collapsed">
+            <TextBlock x:Name="NoticeText"
+                       AutomationProperties.LiveSetting="Assertive" />
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid x:Name="ReadyPanel">
+                <StackPanel MaxWidth="680" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Margin="0,0,0,8"
+                               FontSize="28"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Text="Choose files to shred" />
+                    <TextBlock Margin="0,0,0,20"
+                               TextAlignment="Center"
+                               Text="Nyx overwrites addressable data once, requests a flush, weakens the name, then deletes the entry. SSDs, flash storage, snapshots, backups, and cloud copies can retain data." />
+                    <Border Padding="28"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                            BorderThickness="2"
+                            AutomationProperties.Name="Drop files and folders here">
+                        <StackPanel>
+                            <TextBlock FontSize="18"
+                                       FontWeight="SemiBold"
+                                       TextAlignment="Center"
+                                       Text="Drop files or folders here" />
+                            <TextBlock Margin="0,6,0,16"
+                                       TextAlignment="Center"
+                                       Text="Nothing is deleted until you review the check and confirm." />
+                            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                <Button x:Name="AddFilesButton"
+                                        Click="AddFilesButton_Click"
+                                        AutomationProperties.Name="Add files"
+                                        Content="_Add Files…" />
+                                <Button x:Name="AddFolderButton"
+                                        Click="AddFolderButton_Click"
+                                        AutomationProperties.Name="Add folder"
+                                        Content="Add _Folder…" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="CheckingPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="24"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Text="Checking selected items" />
+                    <TextBlock Margin="0,8,0,20"
+                               TextAlignment="Center"
+                               Text="Nyx is enumerating every item and data stream. No data is being changed." />
+                    <ProgressBar Height="8"
+                                 IsIndeterminate="True"
+                                 AutomationProperties.Name="Checking progress" />
+                    <Button x:Name="CancelCheckButton"
+                            Margin="0,20,0,0"
+                            HorizontalAlignment="Center"
+                            Click="CancelOperationButton_Click"
+                            IsCancel="True"
+                            Content="_Cancel" />
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="ReviewPanel" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock x:Name="ReviewHeadingText"
+                               FontSize="24"
+                               FontWeight="SemiBold"
+                               Text="Review" />
+                    <TextBlock x:Name="ReviewDescriptionText" Margin="0,4,0,12" />
+                </StackPanel>
+                <UniformGrid Grid.Row="1" Columns="5" Margin="0,0,0,12">
+                    <GroupBox Header="Items" Margin="0,0,8,0">
+                        <TextBlock x:Name="ReviewCountText" Margin="8" FontSize="16" />
+                    </GroupBox>
+                    <GroupBox Header="Total size" Margin="0,0,8,0">
+                        <TextBlock x:Name="ReviewSizeText" Margin="8" FontSize="16" />
+                    </GroupBox>
+                    <GroupBox Header="File systems" Margin="0,0,8,0">
+                        <TextBlock x:Name="ReviewFileSystemText" Margin="8" FontSize="16" />
+                    </GroupBox>
+                    <GroupBox Header="Storage" Margin="0,0,8,0">
+                        <TextBlock x:Name="ReviewMediumText" Margin="8" FontSize="16" />
+                    </GroupBox>
+                    <GroupBox Header="Assurance">
+                        <TextBlock x:Name="ReviewAssuranceText" Margin="8" FontSize="16" />
+                    </GroupBox>
+                </UniformGrid>
+                <ListBox x:Name="IssueList"
+                         Grid.Row="2"
+                         MaxHeight="116"
+                         Margin="0,0,0,12"
+                         ItemsSource="{Binding}"
+                         ScrollViewer.CanContentScroll="True"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         AutomationProperties.Name="Warnings and blockers">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Margin="4,2" Text="{Binding DisplayText}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <ListView x:Name="TargetList"
+                          Grid.Row="3"
+                          ItemsSource="{Binding}"
+                          ScrollViewer.CanContentScroll="True"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          AutomationProperties.Name="Checked items">
+                    <ListView.View>
+                        <GridView AllowsColumnReorder="False">
+                            <GridViewColumn Width="520" Header="Path" DisplayMemberBinding="{Binding Path}" />
+                            <GridViewColumn Width="90" Header="Kind" DisplayMemberBinding="{Binding Kind}" />
+                            <GridViewColumn Width="100" Header="Size" DisplayMemberBinding="{Binding Size}" />
+                            <GridViewColumn Width="110" Header="Assurance" DisplayMemberBinding="{Binding Assurance}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+                <DockPanel Grid.Row="4" Margin="0,14,0,0">
+                    <Button DockPanel.Dock="Left"
+                            Margin="0"
+                            Click="ClearButton_Click"
+                            Content="_Clear" />
+                    <StackPanel DockPanel.Dock="Right" HorizontalAlignment="Right" Orientation="Horizontal">
+                        <Button Click="AddFilesButton_Click" Content="Add _More…" />
+                        <Button Click="AddFolderButton_Click" Content="Add F_older…" />
+                        <Button x:Name="ContinueButton"
+                                Click="ContinueButton_Click"
+                                AutomationProperties.HelpText="Continue to the irreversible confirmation step"
+                                Content="_Continue" />
+                    </StackPanel>
+                </DockPanel>
+            </Grid>
+
+            <Grid x:Name="ConfirmationPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="24"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Text="Confirm irreversible action" />
+                    <TextBlock x:Name="ConfirmationSummaryText"
+                               Margin="0,10,0,12"
+                               TextAlignment="Center" />
+                    <TextBlock TextAlignment="Center"
+                               Text="This cannot be undone. Nyx cannot guarantee removal from SSD reserve areas, snapshots, backups, synced devices, or cloud history." />
+                    <StackPanel x:Name="TypedConfirmationPanel" Margin="0,20,0,0" Visibility="Collapsed">
+                        <Label HorizontalContentAlignment="Center"
+                               Target="{Binding ElementName=TypedConfirmationBox}"
+                               Content="Type SHRED exactly to continue:" />
+                        <TextBox x:Name="TypedConfirmationBox"
+                                 Width="220"
+                                 HorizontalContentAlignment="Center"
+                                 TextChanged="TypedConfirmationBox_TextChanged"
+                                 AutomationProperties.Name="Type SHRED to confirm" />
+                    </StackPanel>
+                    <StackPanel Margin="0,22,0,0" HorizontalAlignment="Center" Orientation="Horizontal">
+                        <Button Click="BackToReviewButton_Click" IsCancel="True" Content="_Back" />
+                        <Button x:Name="ConfirmShredButton"
+                                Click="ConfirmShredButton_Click"
+                                AutomationProperties.HelpText="Irreversibly begin the reviewed best-effort overwrite and delete operation"
+                                Content="Shred _Selected Items" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="RevalidatingPanel" Visibility="Collapsed">
+                <StackPanel MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="24"
+                               FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Text="Revalidating" />
+                    <TextBlock Margin="0,8,0,20"
+                               TextAlignment="Center"
+                               Text="Nyx is confirming that every reviewed item is unchanged before the first write." />
+                    <ProgressBar Height="8"
+                                 IsIndeterminate="True"
+                                 AutomationProperties.Name="Revalidation progress" />
+                    <Button Margin="0,20,0,0"
+                            HorizontalAlignment="Center"
+                            Click="CancelOperationButton_Click"
+                            IsCancel="True"
+                            Content="_Cancel" />
+                </StackPanel>
+            </Grid>
+
+            <Grid x:Name="ShreddingPanel" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock FontSize="24" FontWeight="SemiBold" Text="Shredding" />
+                <StackPanel Grid.Row="1" Margin="0,12,0,12">
+                    <TextBlock x:Name="CurrentItemText"
+                               FontWeight="SemiBold"
+                               AutomationProperties.LiveSetting="Polite"
+                               Text="Preparing…" />
+                    <ProgressBar x:Name="OverallProgressBar"
+                                 Height="12"
+                                 Margin="0,8,0,6"
+                                 Minimum="0"
+                                 Maximum="1"
+                                 AutomationProperties.Name="Overall shredding progress" />
+                    <TextBlock x:Name="ProgressSummaryText" Text="0 B of 0 B" />
+                </StackPanel>
+                <UniformGrid Grid.Row="2" Columns="3" Margin="0,0,0,12">
+                    <GroupBox Header="Speed" Margin="0,0,8,0">
+                        <TextBlock x:Name="SpeedText" Margin="8" FontSize="16" Text="—" />
+                    </GroupBox>
+                    <GroupBox Header="Estimated time" Margin="0,0,8,0">
+                        <TextBlock x:Name="EtaText" Margin="8" FontSize="16" Text="—" />
+                    </GroupBox>
+                    <GroupBox Header="Problems">
+                        <TextBlock x:Name="FailureCountText" Margin="8" FontSize="16" Text="0" />
+                    </GroupBox>
+                </UniformGrid>
+                <TextBlock Grid.Row="3"
+                           VerticalAlignment="Top"
+                           Text="Nyx finishes the current file and all of its data streams before stopping. Closing this window uses the same rule." />
+                <Button x:Name="StopButton"
+                        Grid.Row="4"
+                        Margin="0,14,0,0"
+                        HorizontalAlignment="Right"
+                        Click="StopButton_Click"
+                        Content="_Stop After Current File" />
+            </Grid>
+
+            <Grid x:Name="ResultsPanel" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="24" FontWeight="SemiBold" Text="Results" />
+                    <TextBlock x:Name="ResultsSummaryText"
+                               Margin="0,4,0,12"
+                               AutomationProperties.LiveSetting="Assertive" />
+                </StackPanel>
+                <TextBlock Grid.Row="1"
+                           Margin="0,0,0,10"
+                           Text="Each outcome is reported explicitly. Overwritten-but-not-deleted items may still contain randomized data and require attention." />
+                <ListView x:Name="ResultsList"
+                          Grid.Row="2"
+                          ItemsSource="{Binding}"
+                          ScrollViewer.CanContentScroll="True"
+                          VirtualizingPanel.IsVirtualizing="True"
+                          VirtualizingPanel.VirtualizationMode="Recycling"
+                          AutomationProperties.Name="Shredding results">
+                    <ListView.View>
+                        <GridView AllowsColumnReorder="False">
+                            <GridViewColumn Width="520" Header="Item" DisplayMemberBinding="{Binding Path}" />
+                            <GridViewColumn Width="210" Header="Outcome" DisplayMemberBinding="{Binding Status}" />
+                            <GridViewColumn Width="150" Header="Stage" DisplayMemberBinding="{Binding FailureStage}" />
+                            <GridViewColumn Width="110" Header="Written" DisplayMemberBinding="{Binding BytesWritten}" />
+                            <GridViewColumn Width="90" Header="Win32" DisplayMemberBinding="{Binding ErrorCode}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+                <Grid Grid.Row="3" Margin="0,14,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <CheckBox x:Name="IncludeFullPathsCheckBox"
+                              VerticalAlignment="Center"
+                              Content="Include _full paths in exported report" />
+                    <WrapPanel Grid.Row="1" Margin="0,10,0,0" HorizontalAlignment="Right">
+                        <Button x:Name="RetryButton"
+                                Click="RetryButton_Click"
+                                Content="_Retry Remaining" />
+                        <Button Click="ExportButton_Click" Content="_Export JSON…" />
+                        <Button Click="NewBatchButton_Click" Content="_New Batch" />
+                    </WrapPanel>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <TextBlock Grid.Row="3"
+                   Margin="0,14,0,0"
+                   Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                   Text="Best-effort deletion only — not certified media sanitization." />
+    </Grid>
+</Window>

@@ -1,0 +1,18 @@
+<Application x:Class="Nyx.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ThemeMode="System"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <DrawingImage x:Key="NyxMark">
+            <DrawingImage.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                     Geometry="M 31,5 C 17,8 8,19 8,32 C 8,47 20,58 35,59 C 25,53 19,43 19,32 C 19,20 23,11 31,5 Z" />
+                    <GeometryDrawing Brush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"
+                                     Geometry="M 39,14 L 43,16 L 39,18 Z M 47,21 L 53,24 L 47,27 Z M 42,31 L 49,34 L 42,37 Z M 48,41 L 54,44 L 48,47 Z M 38,49 L 43,52 L 38,54 Z" />
+                </DrawingGroup>
+            </DrawingImage.Drawing>
+        </DrawingImage>
+    </Application.Resources>
+</Application>

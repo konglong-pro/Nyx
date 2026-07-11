@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-package:
+    name: Build, test, and package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install the SDK from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Show .NET environment
+        run: dotnet --info
+
+      - name: Restore
+        run: dotnet restore Nyx.slnx
+
+      - name: Build
+        run: dotnet build Nyx.slnx --configuration Release --no-restore
+
+      - name: Run non-destructive tests
+        run: >-
+          dotnet test tests/Nyx.Core.Tests/Nyx.Core.Tests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+
+      - name: Run sentinel-protected Windows integration tests
+        env:
+          NYX_RUN_DESTRUCTIVE_TESTS: "1"
+        run: >-
+          dotnet test tests/Nyx.DestructiveTests/Nyx.DestructiveTests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+
+      - name: Build portable release bundle
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -NoRestore
+
+      - name: Upload portable release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nyx-v0.1.0-beta.1-win-x64-portable
+          path: |
+            artifacts/release/Nyx-v0.1.0-beta.1-win-x64-portable.zip
+            artifacts/release/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0

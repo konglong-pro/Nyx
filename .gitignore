@@ -1,0 +1,15 @@
+.dotnet/
+.dotnet-home/
+.nuget/
+.dotnet-sdk.zip
+.dotnet-install.ps1
+.dotnet-releases.json
+**/bin/
+**/obj/
+**/TestResults/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+/Microsoft/Windows/PowerShell/ModuleAnalysisCache

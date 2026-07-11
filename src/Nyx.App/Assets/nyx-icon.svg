@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Nyx dissolving crescent</title>
+  <desc id="desc">A crescent moon whose right edge disperses into five fragments.</desc>
+  <path fill="#20244b" stroke="#e1e8ff" stroke-opacity=".82" stroke-width=".8" d="M31 5C17 8 8 19 8 32c0 15 12 26 27 27-10-6-16-16-16-27 0-12 4-21 12-27Z"/>
+  <path fill="#705bf0" stroke="#e1e8ff" stroke-opacity=".82" stroke-width=".8" d="m39 14 4 2-4 2Zm8 7 6 3-6 3Zm-5 10 7 3-7 3Zm6 10 6 3-6 3Zm-10 8 5 3-5 2Z"/>
+</svg>
