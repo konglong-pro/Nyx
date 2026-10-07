@@ -236,7 +236,7 @@ internal sealed class WindowsShredTargetProcessor : IShredTargetProcessor
                     snapshot,
                     stream,
                     buffer,
-                    bytesAccepted,
+                    ref bytesAccepted,
                     totalBytes,
                     progress);
                 bytesAccepted = overwrite.BytesAccepted;
@@ -930,10 +930,11 @@ internal sealed class WindowsShredTargetProcessor : IShredTargetProcessor
         TargetSnapshot snapshot,
         DataStreamSnapshot stream,
         byte[] buffer,
-        long bytesAlreadyAccepted,
+        ref long bytesAccepted,
         long totalBytes,
         IProgress<ShredProgress>? progress)
     {
+        var bytesAlreadyAccepted = bytesAccepted;
         using var handle = OpenStream(snapshot, stream, out var streamOpenError);
         if (handle.IsInvalid)
         {
@@ -1031,6 +1032,8 @@ internal sealed class WindowsShredTargetProcessor : IShredTargetProcessor
                 }
 
                 streamBytesAccepted = checked(streamBytesAccepted + written);
+                // Preserve confirmed writes even if a later managed operation throws.
+                bytesAccepted = checked(bytesAlreadyAccepted + streamBytesAccepted);
                 chunkOffset = checked(chunkOffset + (int)written);
                 ReportProgress(
                     progress,
@@ -1474,7 +1477,10 @@ internal sealed class WindowsShredTargetProcessor : IShredTargetProcessor
                 expectReadOnlyCleared)
             && length == snapshot.Length
             && information.NumberOfLinks == (uint)snapshot.LinkCount
-            && writeTime == snapshot.LastWriteTimeUtc;
+            // Removing reviewed children changes their parent directory's timestamp.
+            // The complete pre-write rescan still compares it; execution separately
+            // requires the directory to be empty before processing its streams.
+            && (snapshot.Kind == TargetKind.Directory || writeTime == snapshot.LastWriteTimeUtc);
     }
 
     private static FileAttributes GetExpectedAttributes(
@@ -1769,7 +1775,9 @@ internal sealed class WindowsShredTargetProcessor : IShredTargetProcessor
     {
         var status = mutationPhase switch
         {
-            MutationPhase.ContentOverwriteStarted => ShredItemStatus.PartiallyOverwritten,
+            MutationPhase.ContentOverwriteStarted => bytesAccepted > 0
+                ? ShredItemStatus.PartiallyOverwritten
+                : ShredItemStatus.FailedBeforeMutation,
             MutationPhase.ContentOverwritten
                 or MutationPhase.ContentTruncated
                 or MutationPhase.LinkMetadataMutated

@@ -12,6 +12,7 @@ The following sequence has been verified with .NET SDK 10.0.301:
 dotnet restore Nyx.slnx
 dotnet build Nyx.slnx --configuration Release --no-restore
 dotnet test tests/Nyx.Core.Tests/Nyx.Core.Tests.csproj --configuration Release --no-build --no-restore
+dotnet test tests/Nyx.App.Tests/Nyx.App.Tests.csproj --configuration Release --no-build --no-restore
 dotnet test tests/Nyx.DestructiveTests/Nyx.DestructiveTests.csproj --configuration Release --no-build --no-restore --filter TestCategory=Inventory
 ```
 
@@ -24,6 +25,8 @@ Remove-Item Env:NYX_RUN_DESTRUCTIVE_TESTS
 ```
 
 Without the exact value `1`, destructive cases report inconclusive and do not create a shred target. Do not set this variable globally or use fixtures containing real data.
+
+`./scripts/verify.ps1` runs the Release build, core/application tests, and read-only inventory tests. `-IncludeDestructiveTests` opts in only for that run and restores the previous process environment afterward. `-Package` creates a candidate in a new verification directory and independently checks its SHA-256 checksum. Existing release artifacts are never overwritten.
 
 ## Unit coverage
 
@@ -38,6 +41,7 @@ Non-destructive tests should cover:
 - stop-after-current-file semantics and fatal batch-stop conditions;
 - exact mapping to every result status;
 - JSON schema versioning, default path omission, explicit path inclusion, and absence of content hashes.
+- immutable review snapshots, atomic report replacement on failure/cancellation, bounded launch messages, and progress coalescing across thousands of updates.
 
 ## Isolated integration coverage
 
@@ -50,6 +54,7 @@ Once the destructive harness has an audited guard, exercise disposable fixtures 
 - symbolic links, junctions, and mount points with a canary in the target;
 - identity replacement between review, revalidation, and execution;
 - a new child appearing during folder processing;
+- normal nested-folder batches, including named directory streams, whose timestamps change as reviewed children are removed;
 - injected or real rename/delete denial after overwrite;
 - user stop while a multi-stream file is active;
 - 100 GB non-sparse generated or preallocated acceptance data on NTFS/exFAT only, with constant-memory observation; sparse files are a separate blocker test.

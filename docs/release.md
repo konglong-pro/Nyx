@@ -33,6 +33,8 @@ The release script has been run locally with the SDK selected by `global.json`:
 
 Run it with `-NoRestore` only after the matching application runtime assets have been restored. Without `-NoRestore`, the script restores the application project with `NuGet.Config`. The portable ZIP includes README, all project documentation, security policy, license, project/runtime notices, and `global.json`; the release publisher must also attach the corresponding source archive.
 
+Packaging refuses to overwrite either an existing ZIP or checksum file. Use a fresh output directory for another local candidate, for example `./scripts/verify.ps1 -NoRestore -Package`, which writes beneath `artifacts/verification` and checks the resulting checksum independently. A candidate remains a local development artifact until every release gate is completed.
+
 ## Required gates
 
 1. Confirm the tag/version is `v0.1.0-beta.1` and the working tree contains the intended source.

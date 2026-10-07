@@ -53,6 +53,13 @@ internal static class WindowsNativeMethods
     [DllImport("kernel32.dll", EntryPoint = "GetFileAttributesW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     internal static extern uint GetFileAttributes(string fileName);
 
+    [DllImport("kernel32.dll", EntryPoint = "GetFullPathNameW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    internal static extern uint GetFullPathName(
+        string fileName,
+        uint bufferLength,
+        [Out] char[] fullPath,
+        nint filePart);
+
     [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     internal static extern uint GetFinalPathNameByHandle(
         SafeFileHandle file,

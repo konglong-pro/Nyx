@@ -14,6 +14,60 @@ internal sealed class ShredReportExporter(string applicationVersion)
         WriteIndented = true,
     };
 
+    public async Task ExportToFileAsync(
+        ShredBatchResult batch,
+        string destinationPath,
+        bool includeFullPaths,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var fullPath = Path.GetFullPath(destinationPath);
+        var temporaryPath = Path.Combine(
+            Path.GetDirectoryName(fullPath)!,
+            $".nyx-report-{Guid.NewGuid():N}.tmp");
+        var createdTemporaryFile = false;
+        var committed = false;
+        try
+        {
+            await using (var destination = new FileStream(
+                temporaryPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 16 * 1024,
+                FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                createdTemporaryFile = true;
+                await ExportAsync(batch, destination, includeFullPaths, cancellationToken)
+                    .ConfigureAwait(false);
+                await destination.FlushAsync(cancellationToken).ConfigureAwait(false);
+                destination.Flush(flushToDisk: true);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            // The same-directory move commits only a complete, closed report.
+            File.Move(temporaryPath, fullPath, overwrite: true);
+            committed = true;
+        }
+        finally
+        {
+            if (createdTemporaryFile && !committed)
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // Preserve the export failure if the filesystem also denies cleanup.
+                }
+            }
+        }
+    }
+
     public Task ExportAsync(
         ShredBatchResult batch,
         Stream destination,

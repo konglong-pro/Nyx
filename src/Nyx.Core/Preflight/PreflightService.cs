@@ -9,10 +9,13 @@ internal sealed class PreflightService(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
+        cancellationToken.ThrowIfCancellationRequested();
+        var selectedPaths = Array.AsReadOnly(sourcePaths.ToArray());
 
         var issues = new List<PreflightIssue>();
-        foreach (var sourcePath in sourcePaths)
+        foreach (var sourcePath in selectedPaths)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             PreflightIssue? pathIssue;
             try
             {
@@ -36,10 +39,10 @@ internal sealed class PreflightService(
 
         if (issues.Any(static issue => issue.Severity == PreflightSeverity.Blocking))
         {
-            return new PreflightReport(sourcePaths, [], issues);
+            return new PreflightReport(selectedPaths, [], issues);
         }
 
-        var scan = await inventory.ScanAsync(sourcePaths, cancellationToken)
+        var scan = await inventory.ScanAsync(selectedPaths, cancellationToken)
             .ConfigureAwait(false);
         issues.AddRange(scan.Issues);
         var distinctTargets = scan.Targets
@@ -49,6 +52,7 @@ internal sealed class PreflightService(
 
         foreach (var target in distinctTargets)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var targetPathIssue = pathSafetyPolicy.Evaluate(target.Path);
             if (targetPathIssue is not null)
             {
@@ -147,7 +151,7 @@ internal sealed class PreflightService(
             assessedTargets.Add(new PreflightTarget(target, assurance));
         }
 
-        return new PreflightReport(sourcePaths, assessedTargets, issues);
+        return new PreflightReport(selectedPaths, assessedTargets, issues);
     }
 
     public async Task<RevalidationResult> RevalidateAsync(

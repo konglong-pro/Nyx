@@ -32,6 +32,52 @@ public sealed class WindowsShredTargetProcessorTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task ReviewedFolderBatchRemovesParentsAfterTheirChildren(bool includeDirectoryStreams)
+    {
+        using var sandbox = ShredSandbox.Create();
+        var root = sandbox.CreateDirectory("folder-batch");
+        var nested = sandbox.CreateDirectory(Path.Combine("folder-batch", "nested"));
+        _ = sandbox.CreateFile(Path.Combine("folder-batch", "first.bin"), CreatePayload(257));
+        _ = sandbox.CreateFile(Path.Combine("folder-batch", "nested", "second.bin"), CreatePayload(513));
+        var canary = CreatePayload(97);
+        var canaryPath = sandbox.CreateFile("outside-selection.bin", canary);
+        if (includeDirectoryStreams)
+        {
+            _ = sandbox.CreateStream(root, "root-metadata", CreatePayload(113));
+            _ = sandbox.CreateStream(nested, "nested-metadata", CreatePayload(179));
+        }
+
+        var reviewTime = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        Directory.SetLastWriteTimeUtc(root, reviewTime);
+        Directory.SetLastWriteTimeUtc(nested, reviewTime);
+        var service = new PreflightService(
+            new WindowsTargetInventory(),
+            PathSafetyPolicy.CreateForCurrentMachine(Path.Combine(AppContext.BaseDirectory, "Nyx.exe")));
+        var report = await service.InspectAsync([root], CancellationToken.None);
+        Assert.IsTrue(report.CanStart, string.Join(Environment.NewLine, report.Issues.Select(issue => issue.Message)));
+        Assert.HasCount(4, report.Targets);
+        var revalidation = await service.RevalidateAsync(report, CancellationToken.None);
+        Assert.IsTrue(revalidation.IsUnchanged);
+
+        var result = await new ShredEngine(new WindowsShredTargetProcessor()).ExecuteAsync(
+            revalidation.CurrentReport,
+            progress: null,
+            CancellationToken.None);
+
+        Assert.AreEqual(
+            ShredBatchStatus.Completed,
+            result.Status,
+            string.Join(Environment.NewLine, result.Items.Select(item =>
+                $"{item.Target.Path}: {item.Status}, {item.FailureStage}, Win32={item.NativeErrorCode}")));
+        Assert.IsTrue(result.Items.All(item => item.Status == ShredItemStatus.Shredded));
+        Assert.AreEqual(report.TotalBytes, result.Items.Sum(item => item.BytesAcceptedByOperatingSystem));
+        Assert.IsFalse(Directory.Exists(root));
+        CollectionAssert.AreEqual(canary, File.ReadAllBytes(canaryPath));
+    }
+
+    [TestMethod]
     public async Task StreamAddedAfterReviewStopsBeforeMutationAndPreservesContent()
     {
         using var sandbox = ShredSandbox.Create();
@@ -376,6 +422,36 @@ public sealed class WindowsShredTargetProcessorTests
         Assert.AreEqual(1024L * 1024L, result.BytesAcceptedByOperatingSystem);
         Assert.IsFalse(result.IsVolumeFatal);
         Assert.IsFalse(canary.SequenceEqual(File.ReadAllBytes(path)));
+    }
+
+    [TestMethod]
+    [DataRow(1, 0L, (int)ShredItemStatus.FailedBeforeMutation)]
+    [DataRow(2, 1048576L, (int)ShredItemStatus.PartiallyOverwritten)]
+    public async Task ManagedWriteFailurePreservesConfirmedBytesAndMutationStatus(
+        int writeOccurrence,
+        long expectedBytes,
+        int expectedStatusValue)
+    {
+        using var sandbox = ShredSandbox.Create();
+        var canary = CreatePayload(1024 * 1024 + 97);
+        var path = sandbox.CreateFile("managed-write-failure.bin", canary);
+        var target = await InspectSingleAsync(path);
+        var processor = new WindowsShredTargetProcessor(new ShredNativeFaultPlan(
+            new ShredNativeFault(
+                ShredNativeOperation.Write,
+                writeOccurrence,
+                0,
+                BeforeNativeCall: static () => throw new CryptographicException("Injected managed write failure."),
+                ContinueNative: true)));
+
+        var result = await processor.ProcessAsync(target, progress: null);
+
+        Assert.AreEqual((ShredItemStatus)expectedStatusValue, result.Status);
+        Assert.AreEqual(expectedBytes, result.BytesAcceptedByOperatingSystem);
+        Assert.AreEqual(ShredFailureStage.Unexpected, result.FailureStage);
+        Assert.AreEqual(995, result.NativeErrorCode);
+        var remaining = File.ReadAllBytes(path);
+        CollectionAssert.AreEqual(canary[(int)expectedBytes..], remaining[(int)expectedBytes..]);
     }
 
     [TestMethod]

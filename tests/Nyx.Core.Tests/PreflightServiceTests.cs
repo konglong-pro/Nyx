@@ -200,6 +200,120 @@ public sealed class PreflightServiceTests
     }
 
     [TestMethod]
+    public async Task InspectionFreezesSelectedPathsBeforeInventoryMutatesTheCallerList()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "nyx-selected.bin");
+        List<string> selectedPaths = [path];
+        var inventory = new MutatingSourceInventory(selectedPaths, CreateTarget(path));
+        var service = new PreflightService(
+            inventory,
+            PathSafetyPolicy.CreateForCurrentMachine(@"E:\Nyx\Nyx.exe"));
+
+        var report = await service.InspectAsync(selectedPaths, CancellationToken.None);
+
+        Assert.AreEqual(path, report.SourcePaths.Single());
+        Assert.AreEqual(path, inventory.ScannedPaths.Single());
+        Assert.AreEqual(path, report.Targets.Single().Path);
+    }
+
+    [TestMethod]
+    public void ReportRetainsTheReviewedSourcesTargetsStreamsAndBlockers()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "nyx-frozen-folder");
+        List<string> sourcePaths = [path];
+        List<DataStreamSnapshot> streams =
+        [
+            new DataStreamSnapshot(":first:$DATA", 10),
+            new DataStreamSnapshot(":second:$DATA", 20),
+        ];
+        List<PreflightTarget> targets =
+        [
+            new PreflightTarget(CreateTarget(path) with
+            {
+                Kind = TargetKind.Directory,
+                Length = 0,
+                Streams = streams,
+            }, AssuranceLevel.BestEffort),
+        ];
+        var blocker = new PreflightIssue(
+            PreflightIssueCode.TargetChanged,
+            PreflightSeverity.Blocking,
+            "The reviewed object changed.");
+        List<PreflightIssue> issues = [blocker];
+        var report = new PreflightReport(sourcePaths, targets, issues);
+
+        sourcePaths.Clear();
+        targets.Clear();
+        streams.Clear();
+        issues.Clear();
+
+        Assert.AreEqual(path, report.SourcePaths.Single());
+        Assert.AreEqual(path, report.Targets.Single().Path);
+        Assert.HasCount(2, report.Targets.Single().Snapshot.Streams);
+        Assert.AreEqual(30, report.TotalBytes);
+        Assert.Contains(blocker, report.Issues);
+        Assert.IsFalse(report.CanStart);
+        Assert.IsTrue(report.RequiresTypedConfirmation);
+    }
+
+    [TestMethod]
+    public async Task RevalidationDetectsAStreamChangeEvenWhenInventoryReusesItsMutableList()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "nyx-frozen-streams.bin");
+        List<DataStreamSnapshot> streams = [new DataStreamSnapshot("::$DATA", 64)];
+        var target = CreateTarget(path) with { Length = 64, Streams = streams };
+        var service = new PreflightService(
+            new StubTargetInventory(target),
+            PathSafetyPolicy.CreateForCurrentMachine(@"E:\Nyx\Nyx.exe"));
+        var report = await service.InspectAsync([path], CancellationToken.None);
+        streams[0] = new DataStreamSnapshot("::$DATA", 65);
+
+        var revalidation = await service.RevalidateAsync(report, CancellationToken.None);
+
+        Assert.IsFalse(revalidation.IsUnchanged);
+        Assert.AreEqual(64, report.TotalBytes);
+        Assert.AreEqual(PreflightIssueCode.TargetChanged, revalidation.Issue?.Code);
+    }
+
+    [TestMethod]
+    public async Task RevalidationRejectsDirectoryTimestampChangesBeforeExecution()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "nyx-changing-folder");
+        var initial = CreateTarget(path) with
+        {
+            Kind = TargetKind.Directory,
+            Attributes = FileAttributes.Directory,
+            Length = 0,
+            LastWriteTimeUtc = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+        var service = new PreflightService(
+            new SequenceTargetInventory(initial, initial with
+            {
+                LastWriteTimeUtc = initial.LastWriteTimeUtc.AddSeconds(1),
+            }),
+            PathSafetyPolicy.CreateForCurrentMachine(@"E:\Nyx\Nyx.exe"));
+        var report = await service.InspectAsync([path], CancellationToken.None);
+
+        var revalidation = await service.RevalidateAsync(report, CancellationToken.None);
+
+        Assert.IsFalse(revalidation.IsUnchanged);
+        Assert.AreEqual(PreflightIssueCode.TargetChanged, revalidation.Issue?.Code);
+    }
+
+    [TestMethod]
+    public async Task PreCanceledInspectionDoesNotScanOrReturnAProtectedPathReport()
+    {
+        var service = new PreflightService(
+            new ThrowIfScannedInventory(),
+            PathSafetyPolicy.CreateForCurrentMachine(@"E:\Nyx\Nyx.exe"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            service.InspectAsync([@"C:\"], cancellation.Token));
+    }
+
+    [TestMethod]
     public async Task ProtectedChildDiscoveredDuringInventoryBlocksTheBatch()
     {
         var source = Path.Combine(Path.GetTempPath(), "nyx-safe-source");
@@ -318,6 +432,23 @@ public sealed class PreflightServiceTests
             CancellationToken cancellationToken)
         {
             return Task.FromResult(new InventoryResult(targets, []));
+        }
+    }
+
+    private sealed class MutatingSourceInventory(
+        List<string> callerPaths,
+        TargetSnapshot target) : ITargetInventory
+    {
+        public IReadOnlyList<string> ScannedPaths { get; private set; } = [];
+
+        public Task<InventoryResult> ScanAsync(
+            IReadOnlyList<string> sourcePaths,
+            CancellationToken cancellationToken)
+        {
+            callerPaths.Clear();
+            callerPaths.Add(Path.Combine(Path.GetTempPath(), "nyx-unreviewed.bin"));
+            ScannedPaths = sourcePaths.ToArray();
+            return Task.FromResult(new InventoryResult([target], []));
         }
     }
 

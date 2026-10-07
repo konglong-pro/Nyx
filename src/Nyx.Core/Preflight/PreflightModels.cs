@@ -87,23 +87,48 @@ internal interface ITargetInventory
         CancellationToken cancellationToken);
 }
 
-internal sealed record PreflightReport(
-    IReadOnlyList<string> SourcePaths,
-    IReadOnlyList<PreflightTarget> Targets,
-    IReadOnlyList<PreflightIssue> Issues)
+internal sealed record PreflightReport
 {
-    public bool CanStart => Issues.All(static issue =>
-        issue.Severity != PreflightSeverity.Blocking);
+    public PreflightReport(
+        IReadOnlyList<string> sourcePaths,
+        IReadOnlyList<PreflightTarget> targets,
+        IReadOnlyList<PreflightIssue> issues)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+        ArgumentNullException.ThrowIfNull(targets);
+        ArgumentNullException.ThrowIfNull(issues);
 
-    public long TotalBytes => Targets.Sum(static target =>
-        target.Snapshot.Streams.Count > 0
-            ? target.Snapshot.Streams.Sum(static stream => stream.Length)
-            : target.Snapshot.Length);
+        SourcePaths = Array.AsReadOnly(sourcePaths.ToArray());
+        Targets = Array.AsReadOnly(targets.Select(static target => target with
+        {
+            Snapshot = target.Snapshot with
+            {
+                Streams = Array.AsReadOnly(target.Snapshot.Streams.ToArray()),
+            },
+        }).ToArray());
+        Issues = Array.AsReadOnly(issues.ToArray());
+        CanStart = Issues.All(static issue => issue.Severity != PreflightSeverity.Blocking);
+        TotalBytes = Targets.Sum(static target =>
+            target.Snapshot.Streams.Count > 0
+                ? target.Snapshot.Streams.Sum(static stream => stream.Length)
+                : target.Snapshot.Length);
+        RequiresTypedConfirmation = Targets.Count >= 100
+            || Targets.Any(static target =>
+                target.Snapshot.Kind == TargetKind.Directory
+                || (target.Snapshot.Attributes & FileAttributes.Directory) != 0);
+    }
 
-    public bool RequiresTypedConfirmation => Targets.Count >= 100
-        || Targets.Any(static target =>
-            target.Snapshot.Kind == TargetKind.Directory
-            || (target.Snapshot.Attributes & FileAttributes.Directory) != 0);
+    public IReadOnlyList<string> SourcePaths { get; }
+
+    public IReadOnlyList<PreflightTarget> Targets { get; }
+
+    public IReadOnlyList<PreflightIssue> Issues { get; }
+
+    public bool CanStart { get; }
+
+    public long TotalBytes { get; }
+
+    public bool RequiresTypedConfirmation { get; }
 }
 
 internal sealed record RevalidationResult(

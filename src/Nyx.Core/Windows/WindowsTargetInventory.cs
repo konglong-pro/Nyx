@@ -906,13 +906,31 @@ internal sealed class WindowsTargetInventory : ITargetInventory
 
         try
         {
-            path = Path.GetFullPath(sourcePath);
+            // Validate syntax without adopting .NET's expansion of existing 8.3 names.
+            // Keep the caller's normalized spelling for the handle canonical-path check.
+            _ = Path.GetFullPath(sourcePath);
         }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
         {
             error = "The path is invalid.";
             return false;
         }
+
+        var fullPathBuffer = new char[32_768];
+        var fullPathLength = WindowsNativeMethods.GetFullPathName(
+            sourcePath,
+            checked((uint)fullPathBuffer.Length),
+            fullPathBuffer,
+            0);
+        if (fullPathLength == 0 || fullPathLength >= fullPathBuffer.Length)
+        {
+            error = fullPathLength == 0
+                ? $"The path could not be normalized (Win32 {Marshal.GetLastWin32Error()})."
+                : "The normalized path is too long to verify.";
+            return false;
+        }
+
+        path = new string(fullPathBuffer, 0, checked((int)fullPathLength));
 
         var root = Path.GetPathRoot(path);
         if (string.IsNullOrEmpty(root)
