@@ -17,6 +17,7 @@ Nyx is a Windows-only WPF application. It runs as the current user and developme
 - `src/Nyx.App`: WPF presentation, window lifecycle, drag/drop, accessibility, and single-instance coordination.
 - `src/Nyx.Core`: preflight, snapshots, native filesystem boundary, revalidation, shredding orchestration, result models, and report serialization.
 - `tests/Nyx.Core.Tests`: non-destructive policy, orchestration, state, and report tests.
+- `tests/Nyx.App.Tests`: bounded launch forwarding, single-instance coordination, progress coalescing, and offline WPF layout checks.
 - `tests/Nyx.DestructiveTests`: read-only Windows inventory tests plus fault-injected and real-operation integration tests; mutation is limited to the sentinel-protected generated temp root.
 - `docs/threat-model.md`: canonical safety boundary and result meanings.
 
@@ -32,10 +33,13 @@ The restore and build commands below match `.github/workflows/ci.yml`; the run c
 dotnet restore Nyx.slnx
 dotnet build Nyx.slnx -c Debug --no-restore
 dotnet test tests/Nyx.Core.Tests/Nyx.Core.Tests.csproj -c Debug --no-build --no-restore
+dotnet test tests/Nyx.App.Tests/Nyx.App.Tests.csproj -c Debug --no-build --no-restore
 dotnet run --project src/Nyx.App/Nyx.App.csproj
 ```
 
 CI uses `Release` rather than `Debug`. Release packaging is owned by `scripts/build-release.ps1`; use the documented script rather than assembling an archive manually. See [`release.md`](release.md).
+
+For one local Release verification command, use `./scripts/verify.ps1`. It runs the core and application suites plus read-only inventory checks. Add `-IncludeDestructiveTests` to opt into sentinel-protected temporary fixtures, `-Package` to build and independently check a portable candidate in a fresh `artifacts/verification` directory, or `-NoRestore` after a successful restore.
 
 The repository enables nullable analysis, deterministic builds, current recommended .NET analyzers, and warnings as errors through `Directory.Build.props`. Do not suppress a warning globally to make a local change pass.
 

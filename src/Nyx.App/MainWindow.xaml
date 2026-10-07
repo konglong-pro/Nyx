@@ -13,7 +13,8 @@
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
-        Closing="Window_Closing">
+        Closing="Window_Closing"
+        StateChanged="Window_StateChanged">
     <Window.Resources>
         <Style TargetType="Button">
             <Setter Property="Padding" Value="16,6" />
@@ -345,8 +346,8 @@
                         <Button x:Name="RetryButton"
                                 Click="RetryButton_Click"
                                 Content="_Retry Remaining" />
-                        <Button Click="ExportButton_Click" Content="_Export JSON…" />
-                        <Button Click="NewBatchButton_Click" Content="_New Batch" />
+                        <Button x:Name="ExportButton" Click="ExportButton_Click" Content="_Export JSON…" />
+                        <Button x:Name="NewBatchButton" Click="NewBatchButton_Click" Content="_New Batch" />
                     </WrapPanel>
                 </Grid>
             </Grid>

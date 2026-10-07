@@ -516,10 +516,54 @@ public sealed class WindowsTargetInventoryTests
             [shortPath],
             CancellationToken.None);
 
-        Assert.IsEmpty(result.Targets);
+        Assert.IsEmpty(result.Targets, $"Alias '{shortPath}' must not be accepted as '{realPath}'.");
         Assert.IsTrue(result.Issues.Any(issue =>
             issue.Severity == PreflightSeverity.Blocking));
         Assert.AreEqual("short-name canary", File.ReadAllText(realPath));
+    }
+
+    [TestMethod]
+    public async Task EightDotThreeDirectoryAliasIsBlockedBeforeTraversingItsChildren()
+    {
+        using var sandbox = InventorySandbox.Create();
+        var directory = sandbox.CreateDirectory("a-long-sensitive-folder-name-for-nyx");
+        var canaryPath = Path.Combine(directory, "child.txt");
+        File.WriteAllText(canaryPath, "short-directory-name canary");
+        var buffer = new char[32_768];
+        var length = GetShortPathName(directory, buffer, checked((uint)buffer.Length));
+        if (length == 0 || length >= buffer.Length)
+        {
+            Assert.Inconclusive(
+                $"An 8.3 directory alias is unavailable (Win32 {Marshal.GetLastWin32Error()}).");
+        }
+
+        var shortPath = new string(buffer, 0, checked((int)length));
+        if (string.Equals(shortPath, directory, StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Inconclusive("8.3 name creation is disabled on this test volume.");
+        }
+
+        var result = await new WindowsTargetInventory().ScanAsync(
+            [shortPath],
+            CancellationToken.None);
+
+        Assert.IsEmpty(result.Targets);
+        Assert.IsTrue(result.Issues.Any(issue => issue.Severity == PreflightSeverity.Blocking));
+        Assert.AreEqual("short-directory-name canary", File.ReadAllText(canaryPath));
+    }
+
+    [TestMethod]
+    public async Task ActualLongFileNameContainingTildeIsInventoriedWithoutChangingContent()
+    {
+        using var sandbox = InventorySandbox.Create();
+        var path = sandbox.CreateFile("a-long-name~with-a-literal-tilde.txt", "literal-tilde canary");
+
+        var result = await new WindowsTargetInventory().ScanAsync([path], CancellationToken.None);
+
+        Assert.IsEmpty(result.Issues);
+        Assert.HasCount(1, result.Targets);
+        Assert.AreEqual(path, result.Targets[0].Path);
+        Assert.AreEqual("literal-tilde canary", File.ReadAllText(path));
     }
 
     private static void CreateJunction(string junctionPath, string targetPath)

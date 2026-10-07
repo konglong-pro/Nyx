@@ -4,6 +4,7 @@
     <Project Path="src/Nyx.Core/Nyx.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Nyx.App.Tests/Nyx.App.Tests.csproj" />
     <Project Path="tests/Nyx.Core.Tests/Nyx.Core.Tests.csproj" />
     <Project Path="tests/Nyx.DestructiveTests/Nyx.DestructiveTests.csproj" />
   </Folder>

@@ -96,6 +96,10 @@ if (Test-Path -LiteralPath $outputPath -PathType Leaf) {
 $packageName = "Nyx-v$Version-win-x64-portable.zip"
 $packagePath = Join-Path $outputPath $packageName
 $checksumPath = Join-Path $outputPath 'SHA256SUMS.txt'
+if ([System.IO.File]::Exists($packagePath) -or [System.IO.File]::Exists($checksumPath)) {
+    throw "Release artifacts already exist in '$outputPath'. Use a fresh output directory; existing releases are immutable."
+}
+
 $stagingParent = Join-Path ([System.IO.Path]::GetTempPath()) 'NyxRelease'
 $stagingDirectory = Join-Path $stagingParent ([System.Guid]::NewGuid().ToString('N'))
 $publishDirectory = Join-Path $stagingDirectory 'publish'
@@ -225,15 +229,15 @@ try {
     $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllText($temporaryChecksumPath, $checksumLine, $utf8WithoutBom)
 
-    if ([System.IO.File]::Exists($packagePath)) {
-        [System.IO.File]::Delete($packagePath)
-    }
     [System.IO.File]::Move($temporaryPackagePath, $packagePath)
-
-    if ([System.IO.File]::Exists($checksumPath)) {
-        [System.IO.File]::Delete($checksumPath)
+    try {
+        [System.IO.File]::Move($temporaryChecksumPath, $checksumPath)
     }
-    [System.IO.File]::Move($temporaryChecksumPath, $checksumPath)
+    catch {
+        # Only this invocation's newly installed archive is removed on failure.
+        [System.IO.File]::Delete($packagePath)
+        throw
+    }
 
     Write-Host "Created $packagePath"
     Write-Host "Created $checksumPath"

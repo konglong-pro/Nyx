@@ -30,6 +30,8 @@ public partial class MainWindow : Window
     private int _failureCount;
     private bool _closeWhenSafe;
     private bool _allowClose;
+    private bool _exitRequested;
+    private bool _isExporting;
 
     public MainWindow()
         : this([])
@@ -59,6 +61,17 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(
             DispatcherPriority.Normal,
             new Action(() => _ = HandleForwardedPathsAsync(paths)));
+    }
+
+    internal void RestoreFromTray()
+    {
+        BringWindowToFront();
+    }
+
+    internal void RequestExitFromTray()
+    {
+        _exitRequested = true;
+        Close();
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -127,7 +140,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_DragOver(object sender, DragEventArgs e)
+    private void Window_DragOver(object sender, System.Windows.DragEventArgs e)
     {
         e.Effects = IsAcceptingSelection
             && e.Data.GetDataPresent(DataFormats.FileDrop)
@@ -136,7 +149,7 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private async void Window_Drop(object sender, DragEventArgs e)
+    private async void Window_Drop(object sender, System.Windows.DragEventArgs e)
     {
         if (!IsAcceptingSelection)
         {
@@ -378,7 +391,7 @@ public partial class MainWindow : Window
 
         var stopCancellation = new CancellationTokenSource();
         _stopAfterCurrentCancellation = stopCancellation;
-        var progress = new Progress<ShredProgress>(UpdateProgress);
+        using var progress = new CoalescingProgress<ShredProgress>(Dispatcher, UpdateProgress);
         var observer = new ObservingTargetProcessor(
             _targetProcessor,
             report,
@@ -420,6 +433,9 @@ public partial class MainWindow : Window
             stopCancellation.Dispose();
         }
 
+        progress.Flush();
+        FailureCountText.Text = _batchResult.Items.Count(static result => !IsSuccessful(result.Status))
+            .ToString(CultureInfo.CurrentCulture);
         PopulateResults(_batchResult);
         SetState(WorkflowState.Results);
         if (_closeWhenSafe)
@@ -430,6 +446,7 @@ public partial class MainWindow : Window
 
     private void UpdateProgress(ShredProgress progress)
     {
+        FailureCountText.Text = Volatile.Read(ref _failureCount).ToString(CultureInfo.CurrentCulture);
         CurrentItemText.Text =
             $"Item {progress.ItemIndex:N0} of {progress.ItemCount:N0} — {progress.Path}";
         var processed = Math.Clamp(
@@ -462,11 +479,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var count = Interlocked.Increment(ref _failureCount);
-        Dispatcher.BeginInvoke(
-            DispatcherPriority.Background,
-            new Action(() => FailureCountText.Text =
-                count.ToString(CultureInfo.CurrentCulture)));
+        Interlocked.Increment(ref _failureCount);
     }
 
     private void StopButton_Click(object sender, RoutedEventArgs e)
@@ -512,7 +525,7 @@ public partial class MainWindow : Window
 
     private async void RetryButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_batchResult is null)
+        if (_batchResult is null || _isExporting)
         {
             return;
         }
@@ -531,7 +544,7 @@ public partial class MainWindow : Window
 
     private async void ExportButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_batchResult is null)
+        if (_batchResult is null || _isExporting)
         {
             return;
         }
@@ -564,18 +577,17 @@ public partial class MainWindow : Window
             return;
         }
 
+        var batch = _batchResult;
+        _isExporting = true;
+        ExportButton.IsEnabled = false;
+        RetryButton.IsEnabled = false;
+        NewBatchButton.IsEnabled = false;
+        IncludeFullPathsCheckBox.IsEnabled = false;
         try
         {
-            await using var destination = new FileStream(
+            await _reportExporter.ExportToFileAsync(
+                batch,
                 dialog.FileName,
-                FileMode.Create,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 64 * 1024,
-                FileOptions.Asynchronous);
-            await _reportExporter.ExportAsync(
-                _batchResult,
-                destination,
                 includeFullPaths,
                 CancellationToken.None);
             ShowNotice(includeFullPaths
@@ -588,10 +600,27 @@ public partial class MainWindow : Window
         {
             ShowNotice($"The report could not be exported: {exception.Message}");
         }
+        finally
+        {
+            _isExporting = false;
+            ExportButton.IsEnabled = true;
+            RetryButton.IsEnabled = _batchResult is not null && GetRetryPaths(_batchResult).Length > 0;
+            NewBatchButton.IsEnabled = true;
+            IncludeFullPathsCheckBox.IsEnabled = true;
+            if (_closeWhenSafe)
+            {
+                FinishDeferredClose();
+            }
+        }
     }
 
     private void NewBatchButton_Click(object sender, RoutedEventArgs e)
     {
+        if (_isExporting)
+        {
+            return;
+        }
+
         ResetToReady();
     }
 
@@ -623,6 +652,22 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_isExporting)
+        {
+            e.Cancel = true;
+            if (_exitRequested)
+            {
+                _closeWhenSafe = true;
+                ShowNotice("Nyx will close after the report has finished saving.");
+            }
+            else
+            {
+                HideToTray();
+            }
+
+            return;
+        }
+
         if (_state == WorkflowState.Shredding)
         {
             e.Cancel = true;
@@ -637,6 +682,23 @@ public partial class MainWindow : Window
             e.Cancel = true;
             _closeWhenSafe = true;
             _operationCancellation?.Cancel();
+            return;
+        }
+
+        if (_exitRequested)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        HideToTray();
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            HideToTray();
         }
     }
 
@@ -774,6 +836,7 @@ public partial class MainWindow : Window
 
     private void BringWindowToFront()
     {
+        ((App)Application.Current).HideTrayIcon();
         if (WindowState == WindowState.Minimized)
         {
             WindowState = WindowState.Normal;
@@ -783,6 +846,17 @@ public partial class MainWindow : Window
         Activate();
         Topmost = true;
         Topmost = false;
+    }
+
+    private void HideToTray()
+    {
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Hide();
+        ((App)Application.Current).ShowTrayIcon();
     }
 
     private void ShowNotice(string message)

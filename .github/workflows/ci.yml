@@ -46,6 +46,13 @@ jobs:
           --no-build
           --no-restore
 
+      - name: Run application tests
+        run: >-
+          dotnet test tests/Nyx.App.Tests/Nyx.App.Tests.csproj
+          --configuration Release
+          --no-build
+          --no-restore
+
       - name: Run sentinel-protected Windows integration tests
         env:
           NYX_RUN_DESTRUCTIVE_TESTS: "1"

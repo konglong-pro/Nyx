@@ -9,7 +9,7 @@ Nyx is a small Windows 11 utility for best-effort secure deletion of local files
 - Review and shred one or more files or folders through a Windows desktop interface.
 - Detect unsupported or unsafe targets before the first destructive write.
 - Process data serially with bounded memory and show distinct partial-failure outcomes.
-- Work completely offline, without telemetry, accounts, services, or background residency.
+- Work completely offline, without telemetry, accounts, or services.
 - Expose no supported CLI or SDK; launch paths only stage the review UI.
 
 Nyx is not a disk-sanitization or compliance tool. SSD wear levelling, device remapping, snapshots, backups, cloud history, filesystem metadata, caches, and prior copies can retain data. Read the [threat model](docs/threat-model.md) before relying on Nyx.
@@ -32,6 +32,12 @@ Network paths, mapped drives, raw devices, volume roots, ReFS, protected system 
 3. Review the resolved objects, size, storage warning, and any blockers.
 4. Confirm the batch. Batches containing a folder or at least 100 resolved objects require typing the case-sensitive word `SHRED`.
 5. Inspect the result of every object. A stopped batch finishes the current file and its streams, then leaves remaining objects untouched.
+
+Minimizing Nyx or closing an idle window keeps it in the Windows notification area. Double-click the tray icon or choose **Open Nyx** to restore it; choose **Exit** to end the process. Closing during an active check or shred keeps the existing cancel-or-safe-stop behavior instead of hiding the operation.
+
+The interface follows the Windows app theme and uses virtualized review/results lists. Batch progress updates are coalesced to keep large selections responsive. Single-instance forwarding is isolated by Windows user and session, accepts at most 4,096 paths in a 1 MiB message, and times out incomplete messages.
+
+Manual JSON exports omit paths by default. Nyx finishes and flushes a temporary report before replacing the destination, so a failed save preserves an existing report.
 
 Deletion is irreversible once mutation starts. A successful Nyx result means the documented logical overwrite-and-delete procedure completed; it does **not** mean the data is physically unrecoverable.
 

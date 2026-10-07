@@ -1,13 +1,16 @@
 using System.IO.Pipes;
 using System.IO;
 using System.Text.Json;
+using System.Diagnostics;
+using System.Security.Principal;
 
 namespace Nyx.App;
 
 internal sealed class SingleInstanceCoordinator : IDisposable
 {
-    private const string MutexName = @"Local\Nyx.FileShredder.v1";
-    private const string PipeName = "Nyx.FileShredder.v1";
+    private static readonly string EndpointSuffix = GetEndpointSuffix();
+    private static readonly string MutexName = @"Local\Nyx.FileShredder.v1." + EndpointSuffix;
+    private static readonly string PipeName = "Nyx.FileShredder.v1." + EndpointSuffix;
     private readonly Mutex _mutex;
     private readonly CancellationTokenSource _listenerCancellation = new();
     private Task? _listenerTask;
@@ -36,6 +39,16 @@ internal sealed class SingleInstanceCoordinator : IDisposable
     {
         ArgumentNullException.ThrowIfNull(paths);
 
+        byte[] payload;
+        try
+        {
+            payload = LaunchMessageCodec.Encode(paths);
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
+
         for (var attempt = 0; attempt < 10; attempt++)
         {
             try
@@ -46,8 +59,9 @@ internal sealed class SingleInstanceCoordinator : IDisposable
                     PipeDirection.Out,
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 client.Connect(200);
-                JsonSerializer.Serialize(client, new ForwardedLaunch(paths));
-                client.Flush();
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                client.WriteAsync(payload, timeout.Token).AsTask().GetAwaiter().GetResult();
+                client.FlushAsync(timeout.Token).GetAwaiter().GetResult();
                 return true;
             }
             catch (TimeoutException)
@@ -57,6 +71,10 @@ internal sealed class SingleInstanceCoordinator : IDisposable
             catch (IOException)
             {
                 Thread.Sleep(50);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
             }
         }
 
@@ -97,9 +115,10 @@ internal sealed class SingleInstanceCoordinator : IDisposable
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await server.WaitForConnectionAsync(cancellationToken)
                     .ConfigureAwait(false);
-                var launch = await JsonSerializer.DeserializeAsync<ForwardedLaunch>(
-                    server,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(3));
+                var launch = await LaunchMessageCodec.ReadAsync(server, timeout.Token)
+                    .ConfigureAwait(false);
                 if (launch?.Paths is not null)
                 {
                     receive(launch);
@@ -108,6 +127,10 @@ internal sealed class SingleInstanceCoordinator : IDisposable
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return;
+            }
+            catch (OperationCanceledException)
+            {
+                // A connected client must finish its bounded message promptly.
             }
             catch (IOException)
             {
@@ -118,6 +141,13 @@ internal sealed class SingleInstanceCoordinator : IDisposable
                 // Ignore malformed messages from unrelated local processes.
             }
         }
+    }
+
+    private static string GetEndpointSuffix()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        using var process = Process.GetCurrentProcess();
+        return $"{identity.User?.Value ?? throw new InvalidOperationException("The current user identity is unavailable.")}.{process.SessionId}";
     }
 }
 
